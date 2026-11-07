@@ -4,60 +4,89 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>HDRI Studio</title>
-<style>
-  :root { --bg: #f3f4f2; --panel: #ffffff; --line: #d6dad5; --fg: #1b1f22; --muted: #5f676d; --accent: #b9770e; --accent-ink: #ffffff; --bad: #c43d3d; color-scheme: light; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0e1114; --panel: #161a1f; --line: #2b333c; --fg: #e7eaed; --muted: #919ba5; --accent: #f2b33d; --accent-ink: #1a1406; --bad: #ef6b6b; color-scheme: dark; } }
+<style id="gate-style">
+  :root { --bg: #07090b; --panel: #12161a; --line: #2a323b; --fg: #eef1f3; --muted: #95a0aa; --accent: #f2b33d; --accent-ink: #1a1406; --bad: #ef6b6b; color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; place-items: center; padding: 16px; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .gate { min-height: 100%; display: grid; place-items: center; padding: 16px; }
   form { width: 100%; max-width: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
-  h1 { margin: 0; font-size: 24px; letter-spacing: .01em; }
+  h1 { margin: 0; font-size: 24px; }
   h1 span { color: var(--accent); }
   p { margin: 0; color: var(--muted); font-size: 14px; }
-  label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  input { font: inherit; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: var(--fg); width: 100%; }
-  button { font: 600 15px system-ui, sans-serif; padding: 11px; border-radius: 9px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
-  button:disabled { opacity: .6; cursor: wait; }
+  label.t { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  input[type=password] { font: inherit; font-size: 16px; padding: 11px 12px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: var(--fg); width: 100%; }
+  .rem { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); }
+  .rem input { width: 18px; height: 18px; accent-color: var(--accent); }
+  button { font: 600 16px system-ui, sans-serif; padding: 12px; border-radius: 10px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  button:disabled { opacity: .6; }
   input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .err { color: var(--bad); font-size: 13px; min-height: 18px; }
 </style>
 </head>
 <body>
-<form id="f">
-  <h1>HDRI <span>Studio</span></h1>
-  <p>Esta página está protegida. Escribe la contraseña para abrirla.</p>
-  <div style="display:flex;flex-direction:column;gap:6px">
-    <label for="pw">Contraseña</label>
-    <input id="pw" type="password" autocomplete="current-password" autofocus required>
-  </div>
-  <button id="go" type="submit">Entrar</button>
-  <div class="err" id="err" role="alert"></div>
-</form>
-<script>
+<div class="gate" id="gate">
+  <form id="f">
+    <h1>HDRI <span>Studio</span></h1>
+    <p>Página protegida. Escribe la contraseña para entrar.</p>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <label class="t" for="pw">Contraseña</label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+    </div>
+    <label class="rem"><input type="checkbox" id="remember" checked> Recordar en este dispositivo</label>
+    <button id="go" type="submit">Entrar</button>
+    <div class="err" id="err" role="alert"></div>
+  </form>
+</div>
+<script id="gate-script">
 (() => {
-  const ITER = __ITER__;
-  const PAYLOAD = "__PAYLOAD__";
-  const f = document.getElementById("f"), pw = document.getElementById("pw"), go = document.getElementById("go"), err = document.getElementById("err");
-  const bytes = Uint8Array.from(atob(PAYLOAD), c => c.charCodeAt(0));
-  async function open(password) {
-    const enc = new TextEncoder();
-    const base = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
-    const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: bytes.slice(0, 16), iterations: ITER, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
-    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(16, 28) }, key, bytes.slice(28));
-    return new TextDecoder().decode(plain);
+  const P = __PAYLOAD__;
+  const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  const b64 = u8 => btoa(String.fromCharCode(...u8));
+  const STORE = "hdri-studio-key";
+  const $ = id => document.getElementById(id);
+
+  async function contentKeyFromPassword(pw) {
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveKey"]);
+    const kek = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: unb64(P.salt), iterations: P.iter, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(P.wiv) }, kek, unb64(P.wrapped)));
   }
-  f.addEventListener("submit", async e => {
+  async function decryptPage(raw) {
+    const k = await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["decrypt"]);
+    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(P.iv) }, k, unb64(P.ct)));
+  }
+  // Inserta la página descifrada en este mismo documento (sin document.write: compatible con Safari/iPhone).
+  function mount(html) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    document.title = doc.title || document.title;
+    $("gate-style").remove();
+    for (const n of [...doc.head.children]) if (n.tagName !== "SCRIPT" && n.tagName !== "TITLE" && !(n.tagName === "META" && /charset|viewport/i.test(n.outerHTML))) document.head.appendChild(document.importNode(n, true));
+    document.body.innerHTML = "";
+    for (const n of [...doc.body.childNodes]) if (n.nodeName !== "SCRIPT") document.body.appendChild(document.importNode(n, true));
+    for (const s of doc.querySelectorAll("script")) { const x = document.createElement("script"); if (s.id) x.id = s.id; x.textContent = s.textContent; document.body.appendChild(x); }
+  }
+  async function tryStored() {
+    let saved = null;
+    try { saved = localStorage.getItem(STORE); } catch (e) { /* sin almacenamiento */ }
+    if (!saved) return false;
+    try { mount(await decryptPage(unb64(saved))); return true; }
+    catch (e) { try { localStorage.removeItem(STORE); } catch (x) { /* nada */ } return false; }
+  }
+  if (!window.crypto || !crypto.subtle) { $("err").textContent = "Abre la página con https en Safari, Chrome o Firefox actualizados."; return; }
+  tryStored().then(ok => { if (!ok) $("pw").focus(); });
+  $("f").addEventListener("submit", async e => {
     e.preventDefault();
-    if (!window.crypto || !crypto.subtle) { err.textContent = "Tu navegador no permite descifrar esta página. Ábrela con https en Chrome, Edge, Firefox o Safari."; return; }
+    const go = $("go"), err = $("err");
     go.disabled = true; go.textContent = "Abriendo…"; err.textContent = "";
-    try {
-      const html = await open(pw.value);
-      document.open(); document.write(html); document.close();
-    } catch (x) {
-      err.textContent = "Contraseña incorrecta.";
-      go.disabled = false; go.textContent = "Entrar"; pw.select();
-    }
+    let raw;
+    try { raw = await contentKeyFromPassword($("pw").value); }
+    catch (x) { err.textContent = "Contraseña incorrecta."; go.disabled = false; go.textContent = "Entrar"; $("pw").select(); return; }
+    if ($("remember").checked) { try { localStorage.setItem(STORE, b64(raw)); } catch (x) { /* sin almacenamiento */ } }
+    try { mount(await decryptPage(raw)); }
+    catch (x) { err.textContent = "No se pudo abrir la página: " + (x.message || x); go.disabled = false; go.textContent = "Entrar"; }
   });
 })();
 </script>
